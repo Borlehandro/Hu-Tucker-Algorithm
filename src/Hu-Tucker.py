@@ -1,5 +1,6 @@
 from collections import Counter
 from enum import Enum
+from math import ceil
 
 
 class NodeType(Enum):
@@ -93,7 +94,7 @@ def generate_code_table(root_node: Node, table_dict, current_bits):
 # Encode to file
 def encode_to_file(table, input_file, output_file):
     ints_in_buffer = 256  # 1Kb
-    real_bytes_size = 0
+    real_bits_size = 0
     buffer = bytearray(ints_in_buffer * 4)
     buffer_len = 0
     current_int_len = 0
@@ -102,25 +103,50 @@ def encode_to_file(table, input_file, output_file):
         file_content = f.read()
         for ch in file_content:
             bits_to_write = table.get(ch)
-            for bit in bits_to_write:
+            for bit in bits_to_write[::-1]:
                 if buffer_len == ints_in_buffer:
                     output_file.write(buffer)
                     buffer = bytearray(ints_in_buffer * 4)
-                    real_bytes_size += ints_in_buffer * 4
+                    real_bits_size += ints_in_buffer * 32
                     buffer_len = 0
                     print(".", sep="", end="")
-                    if real_bytes_size % (64 * 256) == 0:
+                    if real_bits_size % (64 * 256) == 0:
                         print()
                 if current_int_len == 32:
-                    buffer[buffer_len * 4: (buffer_len + 1) * 4:] = buffer_int.to_bytes(4, "little")
+                    buffer[buffer_len * 4: ((buffer_len + 1) * 4) - 1:] = buffer_int.to_bytes(4, "big")
+                    # print("Flush int:", buffer_int, buffer_int.to_bytes(4, "big"), "from:", buffer_len * 4, "to:", ((buffer_len + 1) * 4) - 1)
                     buffer_len += 1
                     buffer_int = 0
                     current_int_len = 0
-                buffer_int |= (bit << (31 - current_int_len))
+
+                buffer_int |= (bit << current_int_len)
                 current_int_len += 1
     if buffer_len > 0:
-        output_file.write(buffer[::-1])
-        real_bytes_size += buffer_len * 4
+        output_file.write(buffer[:buffer_len * 4:])
+        real_bits_size += buffer_len * 32
+    if current_int_len > 0:
+        # Todo optimize
+        output_file.write(buffer_int.to_bytes(ceil(current_int_len / 8), "big"))
+        real_bits_size += current_int_len
+    output_file.write(real_bits_size.to_bytes(8, "big"))
+    encode_table_info(table, output_file)
+
+
+def encode_table_info(table, output_file):
+    alph_len = len(table)
+    config_len_bytes = 0
+    for letter in table:
+        output_file.write(letter.encode())
+        code = 0
+        code_len = 0
+        for bit in table[letter][::-1]:
+            code |= (bit << code_len)
+            code_len += 1
+        output_file.write(code_len.to_bytes(1, "big"))
+        output_file.write(code.to_bytes(ceil(code_len / 8), "big"))
+        # print(1 + ceil(code_len / 8))
+        config_len_bytes += (2 + ceil(code_len / 8))
+    output_file.write(config_len_bytes.to_bytes(4, "big"))
 
 
 # Main encoding function
@@ -141,6 +167,7 @@ def encode(input_filename, output_filename):
     root = restrict(leaves)
     code_table = {}
     generate_code_table(root, code_table, [])
+    # print(code_table)
 
     # Writing to file
     print("Start writing to file ", output_filename, ".huta", "...", sep="")
