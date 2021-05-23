@@ -19,6 +19,13 @@ class Node:
         self.type = node_type
 
 
+def access_bit(data, num):
+    base = int(num // 8)
+    shift = int(num % 8)
+    print("base", base, "shift", shift)
+    return (data[base] & (1 << shift)) >> shift
+
+
 def find_min_adjacent(nodes_list, index):
     min_adj = nodes_list[index].weight + nodes_list[index + 1].weight
     min_adj_index = index + 1
@@ -178,6 +185,51 @@ def encode(input_filename, output_filename):
     out_file.close()
 
 
+def decode(input_filename, output_filename):
+    print("Start decoding...")
+    input_file = open(input_filename, "rb")
+    print("Doing some magic...")
+    input_file.seek(-4, 2)
+    config_bytes = int.from_bytes(input_file.read(4), "big")
+    input_file.seek(-config_bytes-4-8, 1)
+    bytes_to_read = config_bytes
+    print(bytes_to_read)
+    total_bits = int.from_bytes(input_file.read(8), "big")
+    decode_table = {}
+    while bytes_to_read > 0:
+        symbol = input_file.read(1)
+        code_size = int.from_bytes(input_file.read(1), "big")
+        code_bytes = input_file.read(ceil(code_size / 8))
+        code = [access_bit(code_bytes, i) for i in range(code_size)]
+        print(symbol, code_size, code)
+        decode_table[tuple(code)] = symbol
+        bytes_to_read -= 2 + ceil(code_size / 8)
+    print(decode_table)
+    input_file.seek(0, 0)
+    out = open(output_filename, "wb")
+    decode_to_file(input_file, out, total_bits, decode_table)
+    out.close()
+    input_file.close()
+
+
+def decode_to_file(input_file, output_file, total_bits, decode_table):
+    bits_to_read = total_bits
+    # Todo add buffering
+    bits = []
+    while bits_to_read > 0:
+        byte = input_file.read(1)
+        bits.extend(tuple([access_bit(byte, i) for i in range(8)]))
+        bits_to_read -= 8
+        for k in range(len(bits)):
+            sub = tuple(bits[:k:])
+            print(sub)
+            if sub in decode_table:
+                output_file.write(decode_table[sub])
+                print("SYMBOL", decode_table[sub])
+                bits = bits[k + 1::]
+                print("cut", bits)
+
+
 def main():
     print("Welcome to Hu-Tucker archiver.")
     mode = input("Enter \"code\" to encoding or \"decode\" to decoding\n")
@@ -185,6 +237,10 @@ def main():
         in_filename = input("Enter input filename:")
         out_filename = input("Enter output filename (without extension):")
         encode(in_filename, out_filename)
+    elif mode == "decode":
+        in_filename = input("Enter input filename (with .huta extension):")
+        out_filename = input("Enter output filename (with original file extension):")
+        decode(in_filename, out_filename)
 
 
 if __name__ == "__main__":
