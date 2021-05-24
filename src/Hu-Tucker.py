@@ -22,7 +22,6 @@ class Node:
 def access_bit(data, num):
     base = int(num // 8)
     shift = int(num % 8)
-    print("base", base, "shift", shift)
     return (data[base] & (1 << shift)) >> shift
 
 
@@ -45,7 +44,6 @@ def combine(nodes_list):
         min_right_index = 1
         for i in range(0, len(nodes_list) - 1):
             min_adj_index = find_min_adjacent(nodes_list, i)
-            # print("Min adj for", i, ":", min_adj_index)
             if nodes_list[i].weight + nodes_list[min_adj_index].weight < min_sum:
                 min_sum = nodes_list[i].weight + nodes_list[min_adj_index].weight
                 min_left_index = i
@@ -91,7 +89,6 @@ def generate_code_table(root_node: Node, table_dict, current_bits):
         right_bits = current_bits.copy()
         left_bits.append(0)
         right_bits.append(1)
-        # print("right: ", right_bits, " left:", left_bits)
         generate_code_table(root_node.left, table_dict, left_bits)
         generate_code_table(root_node.right, table_dict, right_bits)
     else:
@@ -110,7 +107,7 @@ def encode_to_file(table, input_file, output_file):
         file_content = f.read()
         for ch in file_content:
             bits_to_write = table.get(ch)
-            for bit in bits_to_write[::-1]:
+            for bit in bits_to_write:
                 if buffer_len == ints_in_buffer:
                     output_file.write(buffer)
                     buffer = bytearray(ints_in_buffer * 4)
@@ -121,26 +118,24 @@ def encode_to_file(table, input_file, output_file):
                         print()
                 if current_int_len == 32:
                     buffer[buffer_len * 4: ((buffer_len + 1) * 4) - 1:] = buffer_int.to_bytes(4, "big")
-                    # print("Flush int:", buffer_int, buffer_int.to_bytes(4, "big"), "from:", buffer_len * 4, "to:", ((buffer_len + 1) * 4) - 1)
                     buffer_len += 1
                     buffer_int = 0
                     current_int_len = 0
 
-                buffer_int |= (bit << current_int_len)
+                buffer_int |= (bit << (31 - current_int_len))
                 current_int_len += 1
     if buffer_len > 0:
         output_file.write(buffer[:buffer_len * 4:])
         real_bits_size += buffer_len * 32
     if current_int_len > 0:
         # Todo optimize
-        output_file.write(buffer_int.to_bytes(ceil(current_int_len / 8), "big"))
+        output_file.write(buffer_int.to_bytes(4, "big"))
         real_bits_size += current_int_len
     output_file.write(real_bits_size.to_bytes(8, "big"))
     encode_table_info(table, output_file)
 
 
 def encode_table_info(table, output_file):
-    alph_len = len(table)
     config_len_bytes = 0
     for letter in table:
         output_file.write(letter.encode())
@@ -151,7 +146,6 @@ def encode_table_info(table, output_file):
             code_len += 1
         output_file.write(code_len.to_bytes(1, "big"))
         output_file.write(code.to_bytes(ceil(code_len / 8), "big"))
-        # print(1 + ceil(code_len / 8))
         config_len_bytes += (2 + ceil(code_len / 8))
     output_file.write(config_len_bytes.to_bytes(4, "big"))
 
@@ -193,18 +187,16 @@ def decode(input_filename, output_filename):
     config_bytes = int.from_bytes(input_file.read(4), "big")
     input_file.seek(-config_bytes-4-8, 1)
     bytes_to_read = config_bytes
-    print(bytes_to_read)
     total_bits = int.from_bytes(input_file.read(8), "big")
     decode_table = {}
     while bytes_to_read > 0:
         symbol = input_file.read(1)
         code_size = int.from_bytes(input_file.read(1), "big")
         code_bytes = input_file.read(ceil(code_size / 8))
-        code = [access_bit(code_bytes, i) for i in range(code_size)]
-        print(symbol, code_size, code)
+        code = [access_bit(code_bytes, i) for i in range(code_size)][::-1]
         decode_table[tuple(code)] = symbol
         bytes_to_read -= 2 + ceil(code_size / 8)
-    print(decode_table)
+    # print(decode_table)
     input_file.seek(0, 0)
     out = open(output_filename, "wb")
     decode_to_file(input_file, out, total_bits, decode_table)
@@ -215,23 +207,20 @@ def decode(input_filename, output_filename):
 def decode_to_file(input_file, output_file, total_bits, decode_table):
     bits_to_read = total_bits
     # Todo add buffering
-    bits = []
+    buffer = []
     while bits_to_read > 0:
         byte = input_file.read(1)
-        bits.extend(tuple([access_bit(byte, i) for i in range(8)]))
+        bits = tuple([access_bit(byte, i) for i in range(8)][::-1])
         bits_to_read -= 8
         for k in range(len(bits)):
-            sub = tuple(bits[:k:])
-            print(sub)
-            if sub in decode_table:
-                output_file.write(decode_table[sub])
-                print("SYMBOL", decode_table[sub])
-                bits = bits[k + 1::]
-                print("cut", bits)
+            buffer.append(bits[k])
+            if tuple(buffer) in decode_table:
+                output_file.write(decode_table[tuple(buffer)])
+                buffer = []
 
 
 def main():
-    print("Welcome to Hu-Tucker archiver.")
+    print("Welcome to Hu-Tucker archiver.\nDeveloped by Alex Borzikov aka Borlehandro.")
     mode = input("Enter \"code\" to encoding or \"decode\" to decoding\n")
     if mode == "code":
         in_filename = input("Enter input filename:")
