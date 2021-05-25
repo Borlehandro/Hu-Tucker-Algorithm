@@ -1,4 +1,6 @@
 from math import ceil
+import progress
+import time
 
 
 def to_bits(data, bits_len):
@@ -13,6 +15,8 @@ def decode(input_filename, output_filename):
     print("Start decoding...")
     input_file = open(input_filename, "rb")
     print("Doing some magic...")
+    print("Reading config start.")
+    start_time = time.time()
     input_file.seek(-4, 2)
     config_bytes = int.from_bytes(input_file.read(4), "big")
     input_file.seek(-config_bytes-4-8, 1)
@@ -27,6 +31,7 @@ def decode(input_filename, output_filename):
         decode_table[tuple(code)] = symbol
         bytes_to_read -= 2 + ceil(code_size / 8)
     # print(decode_table)
+    print("Reading config completed:", time.time() - start_time, "s")
     input_file.seek(0, 0)
     out = open(output_filename, "wb")
     decode_to_file(input_file, out, total_bits, decode_table)
@@ -35,9 +40,13 @@ def decode(input_filename, output_filename):
 
 
 def decode_to_file(input_file, output_file, total_bits, decode_table):
+    print("Decoding to file start.")
+    start_time = time.time()
     bits_to_read = total_bits
-    # Todo add buffering
+    # Todo add buffering!
+    # Todo add progress
     buffer = []
+    current_bits = 0
     while bits_to_read > 0:
         byte = input_file.read(1)
         bits = tuple(to_bits(byte, 8))
@@ -46,4 +55,6 @@ def decode_to_file(input_file, output_file, total_bits, decode_table):
             buffer.append(bits[k])
             if tuple(buffer) in decode_table:
                 output_file.write(decode_table[tuple(buffer)])
+                current_bits += len(decode_table[tuple(buffer)])
                 buffer = []
+    print("Decoding to file completed:", time.time() - start_time, "s")

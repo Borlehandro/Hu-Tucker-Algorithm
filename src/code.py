@@ -2,6 +2,30 @@ from collections import Counter
 from math import ceil
 from node import NodeType
 from node import Node
+import progress
+import os
+import time
+
+
+def count_weights(input_filename):
+    print("Weights counting start.")
+    total_bytes = os.stat(input_filename).st_size
+    current_byte = 0
+    start_time = time.time()
+    symbols_weights = Counter()
+    with open(input_filename, "rb") as f:
+        weights_buffer = f.read(1024)
+        while weights_buffer:
+            for byte in weights_buffer:
+                symbols_weights[bytes([byte])] += 1
+                current_byte += 1
+            progress.print_progress_bar(current_byte, total_bytes)
+            weights_buffer = f.read(1024)
+    # print(symbols_weights)
+    sorted(symbols_weights.items())
+    progress.clear_progress()
+    print("Weights counting completed:", time.time() - start_time, "s")
+    return symbols_weights
 
 
 def find_min_adjacent(nodes_list, index):
@@ -44,6 +68,8 @@ def count_levels(node):
 
 # Restructuring (#3)
 def restrict(nodes_list):
+    print("Restructuring start.")
+    start_time = time.time()
     stack = list()
     i = 0
     new_node = None
@@ -59,6 +85,7 @@ def restrict(nodes_list):
             new_node = Node(left, right, None, None, NodeType.TERMINAL)
             new_node.level = left.level - 1
             stack.append(new_node)
+    print("Restructuring completed:", time.time() - start_time, "s")
     return new_node
 
 
@@ -76,34 +103,38 @@ def generate_code_table(root_node: Node, table_dict, current_bits):
 
 
 # Encoding and write to file
-def encode_to_file(table, input_file, output_file):
+def encode_to_file(table, input_file, output_file, input_size):
+    print("Writing to file start.")
+    start_time = time.time()
     ints_in_buffer = 256  # 1Kb
     real_bits_size = 0
     buffer = bytearray(ints_in_buffer * 4)
     buffer_len = 0
     current_int_len = 0
     buffer_int = int()  # 1 int = 4 bytes
+    current_input_byte = 0
     with input_file as f:
-        file_content = f.read()
-        for ch in file_content:
-            bits_to_write = table.get(bytes([ch]))
-            for bit in bits_to_write:
-                if buffer_len == ints_in_buffer:
-                    output_file.write(buffer[:ints_in_buffer * 4:])
-                    buffer = bytearray(ints_in_buffer * 4)
-                    real_bits_size += ints_in_buffer * 32
-                    buffer_len = 0
-                    print(".", sep="", end="")
-                    if real_bits_size % (64 * 1024) == 0:
-                        print()
-                if current_int_len == 32:
-                    buffer[buffer_len * 4: ((buffer_len + 1) * 4) - 1:] = buffer_int.to_bytes(4, "big")
-                    buffer_len += 1
-                    buffer_int = 0
-                    current_int_len = 0
+        file_content = f.read(1024)
+        while file_content:
+            for ch in file_content:
+                current_input_byte += 1
+                bits_to_write = table.get(bytes([ch]))
+                for bit in bits_to_write:
+                    if buffer_len == ints_in_buffer:
+                        output_file.write(buffer[:ints_in_buffer * 4:])
+                        buffer = bytearray(ints_in_buffer * 4)
+                        real_bits_size += ints_in_buffer * 32
+                        buffer_len = 0
+                        progress.print_progress_bar(current_input_byte, input_size)
+                    if current_int_len == 32:
+                        buffer[buffer_len * 4: ((buffer_len + 1) * 4) - 1:] = buffer_int.to_bytes(4, "big")
+                        buffer_len += 1
+                        buffer_int = 0
+                        current_int_len = 0
 
-                buffer_int |= (bit << (31 - current_int_len))
-                current_int_len += 1
+                    buffer_int |= (bit << (31 - current_int_len))
+                    current_int_len += 1
+            file_content = f.read(1024)
     if buffer_len > 0:
         output_file.write(buffer[:buffer_len * 4:])
         real_bits_size += buffer_len * 32
@@ -113,6 +144,8 @@ def encode_to_file(table, input_file, output_file):
         real_bits_size += current_int_len
     output_file.write(real_bits_size.to_bytes(8, "big"))
     encode_table_info(table, output_file)
+    progress.clear_progress()
+    print("Writing completed:", time.time() - start_time, "s")
 
 
 # Encode and write table info
@@ -138,31 +171,27 @@ def encode_table_info(table, output_file):
 def encode(input_filename, output_filename):
     print("Start encoding...")
     print("Doing some math...")
-    symbols_weights = Counter()
-    with open(input_filename, "rb") as f:
-        byte = f.read(1)
-        while byte:
-            symbols_weights[byte] += 1
-            byte = f.read(1)
-    print(symbols_weights)
-    sorted(symbols_weights.items())
+    symbols_weights = count_weights(input_filename)
     nodes_list = list(
         map(lambda symbol_weight: Node(None, None, symbol_weight[1], symbol_weight[0], NodeType.ALPHABETIC),
             sorted(symbols_weights.items())))
     leaves = nodes_list.copy()
+    print("Combining start.")
+    start_time = time.time()
     combine(nodes_list)
+    print("Combining completed:", time.time() - start_time, "s")
     root = nodes_list[0]
     root.level = 0
     count_levels(root)
     root = restrict(leaves)
     code_table = {}
     generate_code_table(root, code_table, [])
-    print(code_table)
+    # print(code_table)
 
     # Writing to file
     print("Start writing to file ", output_filename, ".huta", "...", sep="")
     input_file = open(input_filename, "rb")
     out_file = open(output_filename + ".huta", "wb")
-    encode_to_file(code_table, input_file, out_file)
+    encode_to_file(code_table, input_file, out_file, os.stat(input_filename).st_size)
     print("Encoding completed. Encoded file: ", output_filename, ".huta", sep="")
     out_file.close()
