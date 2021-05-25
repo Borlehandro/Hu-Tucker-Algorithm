@@ -22,18 +22,9 @@ class Node:
 def to_bits(data, bits_len):
     res = []
     for b in data:
-        print(b)
         for bit_number in range(7, -1, -1):
             res.append((b & (1 << (bit_number % 8))) >> (bit_number % 8))
-            print("app", (b & (1 << (bit_number % 8))) >> (bit_number % 8))
     return res[:bits_len:]
-
-
-def access_bit(data, num):
-    base = int(num // 8)
-    shift = int(num % 8)
-    print("base", base, "value", data[base], "shift", shift, "ret", (data[base] & (1 << shift)) >> shift)
-    return (data[base] & (1 << shift)) >> shift
 
 
 def find_min_adjacent(nodes_list, index):
@@ -120,7 +111,7 @@ def encode_to_file(table, input_file, output_file):
             bits_to_write = table.get(ch)
             for bit in bits_to_write:
                 if buffer_len == ints_in_buffer:
-                    output_file.write(buffer)
+                    output_file.write(buffer[:ints_in_buffer * 4:])
                     buffer = bytearray(ints_in_buffer * 4)
                     real_bits_size += ints_in_buffer * 32
                     buffer_len = 0
@@ -154,15 +145,12 @@ def encode_table_info(table, output_file):
         code_len = 0
         for bit in table[letter][::-1]:
             code |= (bit << code_len)
-            print(code)
             code_len += 1
         shift = (8 * ceil(code_len / 8) - code_len)
         if shift > 0:
             code <<= shift
         output_file.write(code_len.to_bytes(1, "big"))
-        print("Code len", code_len)
         output_file.write(code.to_bytes(ceil(code_len / 8), "big"))
-        print(letter, table[letter], "->", code, "==", (code.to_bytes(ceil(code_len / 8), "big")))
         config_len_bytes += (2 + ceil(code_len / 8))
     output_file.write(config_len_bytes.to_bytes(4, "big"))
 
@@ -185,7 +173,7 @@ def encode(input_filename, output_filename):
     root = restrict(leaves)
     code_table = {}
     generate_code_table(root, code_table, [])
-    print(code_table)
+    # print(code_table)
 
     # Writing to file
     print("Start writing to file ", output_filename, ".huta", "...", sep="")
@@ -212,9 +200,8 @@ def decode(input_filename, output_filename):
         code_bytes = input_file.read(ceil(code_size / 8))
         code = to_bits(code_bytes, code_size)
         decode_table[tuple(code)] = symbol
-        print("CODE_SIZE", code_size, "SYMBOL", symbol, "CODE", code, "from bytes", code_bytes.hex())
         bytes_to_read -= 2 + ceil(code_size / 8)
-    print(decode_table)
+    # print(decode_table)
     input_file.seek(0, 0)
     out = open(output_filename, "wb")
     decode_to_file(input_file, out, total_bits, decode_table)
