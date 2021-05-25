@@ -107,8 +107,10 @@ def encode_to_file(table, input_file, output_file):
     buffer_int = int()  # 1 int = 4 bytes
     with input_file as f:
         file_content = f.read()
+        print("FileContent:", file_content)
         for ch in file_content:
-            bits_to_write = table.get(ch)
+            print("Char:", bytes([ch]))
+            bits_to_write = table.get(bytes([ch]))
             for bit in bits_to_write:
                 if buffer_len == ints_in_buffer:
                     output_file.write(buffer[:ints_in_buffer * 4:])
@@ -140,7 +142,7 @@ def encode_to_file(table, input_file, output_file):
 def encode_table_info(table, output_file):
     config_len_bytes = 0
     for letter in table:
-        output_file.write(letter.encode())
+        output_file.write(letter)
         code = 0
         code_len = 0
         for bit in table[letter][::-1]:
@@ -158,9 +160,14 @@ def encode_table_info(table, output_file):
 # Main encoding function
 def encode(input_filename, output_filename):
     print("Start encoding...")
-    input_file = open(input_filename, "r")
     print("Doing some math...")
-    symbols_weights = Counter(input_file.read())
+    symbols_weights = Counter()
+    with open(input_filename, "rb") as f:
+        byte = f.read(1)
+        while byte:
+            symbols_weights[byte] += 1
+            byte = f.read(1)
+    print(symbols_weights)
     sorted(symbols_weights.items())
     nodes_list = list(
         map(lambda symbol_weight: Node(None, None, symbol_weight[1], symbol_weight[0], NodeType.ALPHABETIC),
@@ -173,11 +180,11 @@ def encode(input_filename, output_filename):
     root = restrict(leaves)
     code_table = {}
     generate_code_table(root, code_table, [])
-    # print(code_table)
+    print(code_table)
 
     # Writing to file
     print("Start writing to file ", output_filename, ".huta", "...", sep="")
-    input_file = open(input_filename, "r")
+    input_file = open(input_filename, "rb")
     out_file = open(output_filename + ".huta", "wb")
     encode_to_file(code_table, input_file, out_file)
     print("Encoding completed. Encoded file: ", output_filename, ".huta", sep="")
